@@ -2,70 +2,74 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>驴桥 Donkey Bridge - 联机稳定版</title>
+    <title>驴桥 Donkey Bridge</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
         :root { --primary: #6366f1; --accent: #f59e0b; --bg: #f8fafc; }
-        body { font-family: 'PingFang SC', sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 20px; }
-        #game-container { background: white; width: 100%; max-width: 600px; padding: 30px; border-radius: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); text-align: center; }
+        body { font-family: sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 20px; }
+        #game-box { background: white; width: 100%; max-width: 600px; padding: 30px; border-radius: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); text-align: center; }
         .hidden { display: none !important; }
-        .status-bar { display: flex; justify-content: space-between; padding: 12px; background: #f1f5f9; border-radius: 12px; margin-bottom: 15px; font-weight: bold; }
-        .hand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin: 15px 0; }
-        .card { padding: 12px 8px; border: 2px solid #e2e8f0; border-radius: 12px; cursor: pointer; background: #fff; font-weight: bold; }
+        .status-bar { display: flex; justify-content: space-between; background: #f1f5f9; padding: 12px; border-radius: 12px; margin-bottom: 20px; font-weight: bold; }
+        #last-story-display { background: #e0f2fe; color: #0369a1; padding: 15px; border-radius: 12px; margin-bottom: 15px; font-style: italic; text-align: left; border-left: 5px solid #0ea5e9; }
+        .hand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin: 20px 0; }
+        .card { padding: 15px 10px; border: 2px solid #e2e8f0; border-radius: 12px; cursor: pointer; background: #fff; font-weight: bold; }
         .card.done { background: #f1f5f9; color: #cbd5e1; text-decoration: line-through; }
-        .card.active { border-color: var(--accent); }
-        textarea { width: 100%; border: 2px solid #e2e8f0; border-radius: 12px; padding: 12px; box-sizing: border-box; outline: none; }
+        .card.active { border-color: var(--accent); background: #fffbeb; }
+        textarea { width: 100%; border: 2px solid #e2e8f0; border-radius: 12px; padding: 15px; box-sizing: border-box; outline: none; font-size: 16px; }
         .aid-tag { background: #fef3c7; color: #92400e; padding: 8px 16px; border-radius: 30px; font-weight: bold; border: 1px solid #fcd34d; display: inline-block; margin: 5px; }
-        button { padding: 12px; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; }
+        button { padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; transition: 0.2s; }
         .btn-main { background: var(--primary); color: white; }
         .btn-accent { background: var(--accent); color: white; }
-        #typer-container { text-align: left; background: #2d3436; color: #dfe6e9; padding: 15px; border-radius: 12px; font-family: monospace; margin-top: 15px; }
-        .history-card { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 8px; border-left: 5px solid var(--accent); color: #333; }
+        #typer-container { text-align: left; background: #2d3436; color: #dfe6e9; padding: 20px; border-radius: 12px; font-family: monospace; margin-top: 20px; line-height: 1.6; }
+        .history-card { background: #fff; padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 5px solid var(--accent); color: #333; }
     </style>
 </head>
 <body>
-<div id="game-container">
+<div id="game-box">
     <h1>驴桥 Donkey Bridge</h1>
 
-    <div id="setup-screen">
-        <input type="text" id="nick" placeholder="昵称" style="width:150px; padding:8px; margin-bottom:15px; border-radius:8px; border:1px solid #ddd;">
-        <div style="background:#f1f5f9; padding:15px; border-radius:12px; margin-bottom:15px; text-align: left;">
-            人数 (m): <input type="number" id="m-val" value="2" style="width:40px;"><br>
-            手牌 (n): <input type="number" id="n-val" value="10" style="width:40px;"><br>
-            轮次 (p): <input type="number" id="p-val" value="5" style="width:40px;">
+    <div id="screen-setup">
+        <input type="text" id="nick" placeholder="输入你的昵称" style="width:80%; padding:12px; margin-bottom:20px; border-radius:8px; border:2px solid #ddd;">
+        <div style="background:#f1f5f9; padding:20px; border-radius:15px; margin-bottom:20px; text-align: left; line-height: 2;">
+            人数 (m): <input type="number" id="m-val" value="2" style="width:50px;"><br>
+            手牌 (n): <input type="number" id="n-val" value="10" style="width:50px;"><br>
+            轮次 (p): <input type="number" id="p-val" value="5" style="width:50px;">
         </div>
         <button class="btn-main" onclick="ready()">开始游戏</button>
     </div>
 
-    <div id="play-screen" class="hidden">
+    <div id="screen-play" class="hidden">
         <div class="status-bar">
-            <span>当前: <span id="player-name" style="color:var(--primary)">-</span></span>
-            <span id="wait-msg" style="font-size:12px; color:gray;">(等待他人)</span>
+            <span>当前玩家: <span id="p-name" style="color:var(--primary)">-</span></span>
+            <span id="wait-msg" style="font-size:12px; color:gray;">(请等待...)</span>
         </div>
+        
+        <div id="last-story-display" class="hidden"></div>
+
         <div class="hand-grid" id="hand-display"></div>
         <div id="story-area" class="hidden">
             <h3 id="active-word" style="color:var(--accent); margin:10px 0;"></h3>
-            <textarea id="story-text" rows="3" placeholder="编写故事..."></textarea>
-            <button class="btn-accent" style="margin-top:10px" onclick="submit()">提交故事</button>
+            <textarea id="story-text" rows="4" placeholder="请根据关键词续写故事..."></textarea>
+            <button class="btn-accent" style="margin-top:15px" onclick="submit()">提交故事片段</button>
         </div>
     </div>
 
-    <div id="recall-screen" class="hidden">
+    <div id="screen-recall" class="hidden">
         <h2>🧠 默写挑战</h2>
-        <div style="background:#fff7ed; padding:15px; border-radius:15px; margin-bottom:15px;">
-            <p id="aid-tip" style="margin:0 0 10px 0; font-size:14px; color:#c2410c;">加载提示词中...</p>
+        <div style="background:#fff7ed; padding:15px; border-radius:15px; margin-bottom:20px;">
+            <p id="aid-tip" style="font-size:14px; color:#c2410c;"></p>
             <div id="aid-cards-display"></div>
         </div>
-        <textarea id="recall-input" placeholder="输入全部词语，空格隔开..."></textarea>
-        <button class="btn-main" style="margin-top:10px" onclick="finishRecall()">提交我的准确率</button>
+        <textarea id="recall-input" placeholder="输入你记得的所有关键词，空格隔开..."></textarea>
+        <button class="btn-main" style="margin-top:15px" onclick="finish()">提交答案</button>
     </div>
 
-    <div id="result-screen" class="hidden">
-        <h2>📊 战报</h2>
-        <div id="rank-list"></div>
+    <div id="screen-res" class="hidden">
+        <h2>📊 游戏战报</h2>
+        <div id="rank-list" style="margin-bottom:20px; font-size:18px;"></div>
         <hr>
         <div id="typer-container"></div>
-        <button class="btn-main" onclick="location.reload()" style="margin-top:15px">回主页</button>
+        <button class="btn-main" onclick="location.reload()" style="margin-top:20px">再来一局</button>
     </div>
 </div>
 
@@ -75,28 +79,38 @@
 
     function ready() {
         myName = document.getElementById('nick').value;
-        const cfg = {
-            m: parseInt(document.getElementById('m-val').value),
-            n: parseInt(document.getElementById('n-val').value),
-            p: parseInt(document.getElementById('p-val').value)
+        const cfg = { 
+            m: parseInt(document.getElementById('m-val').value), 
+            n: parseInt(document.getElementById('n-val').value), 
+            p: parseInt(document.getElementById('p-val').value) 
         };
-        if(!myName) return alert("写个名字");
+        if(!myName) return alert("请输入名字");
         socket.emit('join', myName);
         socket.emit('startGame', cfg);
     }
 
     socket.on('initHand', data => {
         handData = data.hand.map(w => ({ word: w, done: false }));
-        document.getElementById('setup-screen').classList.add('hidden');
-        document.getElementById('play-screen').classList.remove('hidden');
+        document.getElementById('screen-setup').classList.add('hidden');
+        document.getElementById('screen-play').classList.remove('hidden');
         renderHand(false);
     });
 
     socket.on('nextTurn', data => {
         const isMe = data.name === myName;
-        document.getElementById('player-name').innerText = data.name;
+        document.getElementById('p-name').innerText = data.name;
         document.getElementById('wait-msg').classList.toggle('hidden', isMe);
         document.getElementById('story-area').classList.add('hidden');
+        
+        // 接龙逻辑：显示上一个故事
+        const lastStoryDiv = document.getElementById('last-story-display');
+        if (data.lastStory) {
+            lastStoryDiv.innerHTML = `上一位玩家留下的线索：<br><strong>“${data.lastStory}”</strong>`;
+            lastStoryDiv.classList.remove('hidden');
+        } else {
+            lastStoryDiv.classList.add('hidden');
+        }
+
         renderHand(isMe);
     });
 
@@ -111,14 +125,16 @@
 
     function selectWord(i) {
         window.activeIdx = i;
+        document.querySelectorAll('.card').forEach(c => c.classList.remove('active'));
+        event.target.classList.add('active');
         document.getElementById('story-area').classList.remove('hidden');
-        document.getElementById('active-word').innerText = handData[i].word;
+        document.getElementById('active-word').innerText = `关键词：${handData[i].word}`;
         document.getElementById('story-text').focus();
     }
 
     function submit() {
         const text = document.getElementById('story-text').value;
-        if(!text) return;
+        if(!text) return alert("请写点故事内容");
         socket.emit('submitStory', { word: handData[window.activeIdx].word, story: text });
         handData[window.activeIdx].done = true;
         document.getElementById('story-text').value = '';
@@ -127,49 +143,48 @@
     }
 
     socket.on('startRecall', data => {
-        console.log("收到提示词:", data.aidWords);
         globalPool = data.storyPool;
-        document.getElementById('play-screen').classList.add('hidden');
-        document.getElementById('recall-screen').classList.remove('hidden');
-        
-        document.getElementById('aid-tip').innerText = `属于你的 ${data.aidWords.length} 个专属提示词：`;
-        const aidBox = document.getElementById('aid-cards-display');
-        aidBox.innerHTML = data.aidWords.map(w => `<span class="aid-tag">${w}</span>`).join('');
+        document.getElementById('screen-play').classList.add('hidden');
+        document.getElementById('screen-recall').classList.remove('hidden');
+        document.getElementById('aid-tip').innerText = `你的提示词（共 ${data.aidWords.length} 个）：`;
+        document.getElementById('aid-cards-display').innerHTML = data.aidWords.map(w => `<span class="aid-tag">${w}</span>`).join('');
     });
 
-    function finishRecall() {
+    function finish() {
         const input = document.getElementById('recall-input').value;
         const userWords = input.split(/[\s,，、]+/).filter(w => w.trim());
         const hits = globalPool.filter(item => userWords.includes(item.word)).length;
         const score = Math.round(hits / globalPool.length * 100);
         socket.emit('submitRecall', { score });
-        document.getElementById('recall-screen').innerHTML = "<h3>等待他人提交...</h3>";
+        document.getElementById('screen-recall').innerHTML = "<h3>正在等待其他人交卷...</h3>";
     }
 
     socket.on('finalRank', data => {
-        document.getElementById('recall-screen').classList.add('hidden');
-        document.getElementById('result-screen').classList.remove('hidden');
-        document.getElementById('rank-list').innerHTML = data.scores
-            .sort((a,b) => b.score - a.score)
-            .map((s, i) => `<div>${i+1}. <b>${s.name}</b>: ${s.score}%</div>`).join('');
+        document.getElementById('screen-recall').classList.add('hidden');
+        document.getElementById('screen-res').classList.remove('hidden');
+        document.getElementById('rank-list').innerHTML = data.scores.sort((a,b)=>b.score-a.score).map((s,i)=>`<div>第 ${i+1} 名: <b>${s.name}</b> - 得分: ${s.score}%</div>`).join('');
         playTyper(data.storyPool);
     });
 
     async function playTyper(pool) {
         const container = document.getElementById('typer-container');
+        container.innerHTML = "<h4>📖 故事全回顾：</h4>";
         for (let item of pool) {
             let card = document.createElement('div');
             card.className = 'history-card';
-            card.innerHTML = `<strong>[${item.player}-${item.word}]</strong>: `;
+            card.innerHTML = `<strong>【${item.player}】(${item.word})</strong>: `;
             container.appendChild(card);
-            for (let char of item.text) {
-                card.innerHTML += char;
-                await new Promise(r => setTimeout(r, 45));
+            for (let char of item.text) { 
+                card.innerHTML += char; 
+                await new Promise(r => setTimeout(r, 50)); 
             }
         }
     }
 
-    socket.on('forceReset', () => location.reload());
+    socket.on('forceReset', () => {
+        alert("有玩家掉线，游戏重置");
+        location.reload();
+    });
 </script>
 </body>
 </html>
