@@ -29,16 +29,14 @@ io.on('connection', (socket) => {
         pIds.forEach(id => {
             io.to(id).emit('initHand', { hand: deck.splice(0, gameConfig.n) });
         });
-        // 初始第一轮没有“上一个故事”
-        io.emit('nextTurn', { name: players[pIds[0]].name, lastStory: null });
+        // 初始第一轮，全景故事为空
+        io.emit('nextTurn', { name: players[pIds[0]].name, fullStory: [] });
     });
 
     socket.on('submitStory', (data) => {
-        const currentStoryText = data.story; 
-        storyPool.push({ player: players[socket.id].name, word: data.word, text: currentStoryText });
+        storyPool.push({ player: players[socket.id].name, word: data.word, text: data.story });
         
         let pIds = Object.keys(players);
-        // 判定所有人完成 p 轮
         if (storyPool.length >= gameConfig.m * gameConfig.p) {
             let allUsedWords = storyPool.map(item => item.word).sort(() => Math.random() - 0.5);
             pIds.forEach((id, index) => {
@@ -47,10 +45,10 @@ io.on('connection', (socket) => {
             });
         } else {
             let nextIdx = (pIds.indexOf(socket.id) + 1) % pIds.length;
-            // 核心修改：将当前写的故事发送给下一位玩家
+            // 核心修改：将至今为止的所有故事发送给下一位玩家
             io.emit('nextTurn', { 
                 name: players[pIds[nextIdx]].name, 
-                lastStory: currentStoryText 
+                fullStory: storyPool 
             });
         }
     });
@@ -70,4 +68,5 @@ io.on('connection', (socket) => {
     });
 });
 
-const server = http.listen(process.env.PORT || 3000, () => console.log('驴桥服务器运行中'));
+const port = process.env.PORT || 3000;
+http.listen(port, () => console.log(`驴桥服务器已启动：${port}`));
