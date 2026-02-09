@@ -3,7 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, { cors: { origin: "*" }, transports: ['websocket'] });
 
 app.use(express.static('public'));
 
@@ -13,76 +13,91 @@ let rooms = {};
 
 io.on('connection', (socket) => {
     socket.on('joinRoom', (data) => {
-        const { room, name } = data;
+        const room = data.room?.trim();
+        const name = data.name?.trim();
+        if (!room || !name) return;
         socket.join(room);
         socket.roomID = room;
         socket.userName = name;
         if (!rooms[room]) {
-            rooms[room] = { players: [], storyPool: [], curRound: 0, curPlayerIdx: 0, settings: { n: 10, p: 5 } };
+            rooms[room] = { players: [], storyPool: [], curRound: 0, curPlayerIdx: 0, settings: { n: 10, p: 5 }, gameStarted: false, results: [] };
         }
-        const isOwner = rooms[room].players.length === 0;
-        rooms[room].players.push({ id: socket.id, name, isOwner });
+        const r = rooms[room];
+        if (r.gameStarted) return socket.emit('errorMsg', '游戏已开始');
+        const isOwner = r.players.length === 0;
+        r.players.push({ id: socket.id, name, isOwner });
         socket.emit('initInfo', { isOwner });
-        io.to(room).emit('updatePlayers', rooms[room].players);
+        io.to(room).emit('updatePlayers', r.players);
     });
 
     socket.on('startGame', (config) => {
-        const room = socket.roomID;
-        const r = rooms[room];
+        const r = rooms[socket.roomID];
         if(!r) return;
+        if(parseInt(config.n) < parseInt(config.p)) return socket.emit('errorMsg', '手牌数(n)不能小于轮数(p)！');
+        r.gameStarted = true;
         r.settings = config;
-        r.storyPool = []; r.curRound = 0; r.curPlayerIdx = 0;
         let deck = [...LIB].sort(() => Math.random() - 0.5);
-        r.players.forEach(p => {
-            const hand = deck.splice(0, parseInt(config.n));
-            io.to(p.id).emit('receiveHand', { hand });
-        });
-        io.to(room).emit('gameStarted');
-        syncTurn(room);
+        r.players.forEach(p => io.to(p.id).emit('receiveHand', { hand: deck.splice(0, parseInt(config.n)) }));
+        io.to(socket.roomID).emit('gameStarted');
+        syncTurn(socket.roomID);
     });
 
     socket.on('submitStory', (data) => {
-        const room = socket.roomID;
-        const r = rooms[room];
+        const r = rooms[socket.roomID];
         if(!r) return;
         r.storyPool.push({ word: data.word, text: data.text, player: socket.userName, id: socket.id });
-        io.to(room).emit('syncWall', { storyPool: r.storyPool });
+        io.to(socket.roomID).emit('syncWall', { storyPool: r.storyPool });
         r.curPlayerIdx++;
         if (r.curPlayerIdx >= r.players.length) { r.curPlayerIdx = 0; r.curRound++; }
-
+        
         if (r.curRound < parseInt(r.settings.p)) {
-            syncTurn(room);
+            syncTurn(socket.roomID);
         } else {
-            // 核心逻辑：互斥均分提示词
+            // 每人随机分到 p 个提示词的逻辑
             let allWords = r.storyPool.map(s => s.word).sort(() => Math.random() - 0.5);
-            const per = Math.floor(allWords.length / r.players.length);
-            r.players.forEach((p, i) => {
-                const start = i * per;
-                const end = (i === r.players.length - 1) ? allWords.length : start + per;
-                io.to(p.id).emit('startRecallPhase', { 
-                    storyPool: r.storyPool, 
-                    myHints: allWords.slice(start, end) 
-                });
+            const p = parseInt(r.settings.p);
+            r.players.forEach((player, index) => {
+                // 每个人分到数组中对应的 p 个词
+                const hints = allWords.slice(index * p, (index + 1) * p);
+                io.to(player.id).emit('startRecallPhase', { stories: r.storyPool, myHints: hints });
             });
         }
     });
 
     socket.on('protest', () => {
-        const room = socket.roomID, r = rooms[room];
+        const r = rooms[socket.roomID];
         if(!r || r.storyPool.length === 0) return;
         const last = r.storyPool.pop();
         r.curPlayerIdx--;
         if(r.curPlayerIdx < 0) { r.curPlayerIdx = r.players.length - 1; r.curRound--; }
-        io.to(room).emit('syncWall', { storyPool: r.storyPool });
+        io.to(socket.roomID).emit('syncWall', { storyPool: r.storyPool });
         io.to(last.id).emit('timeRewind', { word: last.word, oldText: last.text });
-        syncTurn(room); 
+        syncTurn(socket.roomID); 
     });
 
-    function syncTurn(room) {
-        const r = rooms[room];
+    socket.on('submitScore', (score) => {
+        const r = rooms[socket.roomID];
+        if(!r) return;
+        r.results.push({ name: socket.userName, score });
+        if(r.results.length === r.players.length) {
+            const sorted = r.results.sort((a, b) => b.score - a.score);
+            io.to(socket.roomID).emit('finalResults', { leaderboard: sorted, stories: r.storyPool });
+            delete rooms[socket.roomID];
+        }
+    });
+
+    socket.on('disconnect', () => {
+        if (rooms[socket.roomID]) {
+            io.to(socket.roomID).emit('roomClosed', `${socket.userName} 掉线，游戏结束`);
+            delete rooms[socket.roomID];
+        }
+    });
+
+    function syncTurn(id) {
+        const r = rooms[id];
         const active = r.players[r.curPlayerIdx];
-        if(active) io.to(room).emit('nextTurn', { activeID: active.id, activeName: active.name });
+        if(active) io.to(id).emit('nextTurn', { activeID: active.id, activeName: active.name });
     }
 });
 
-server.listen(3000, () => console.log("Server running on port 3000"));
+server.listen(process.env.PORT || 3000);
