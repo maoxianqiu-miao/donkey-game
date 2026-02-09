@@ -14,6 +14,7 @@
         .item { padding: 10px; background: white; border-radius: 8px; margin-bottom: 8px; border-left: 5px solid var(--primary); font-size: 14px; position: relative; }
         .badge { background: var(--accent); color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 5px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; margin: 15px 0; }
+        .btn-exit { background: #ef4444; color: white; padding: 5px 10px; border-radius: 8px; font-size: 12px; position: absolute; top: 20px; right: 20px; border: none; cursor: pointer; z-index: 100; }
         .card { padding: 12px 5px; border: 2px solid #e2e8f0; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: bold; background: #fff; text-align: center; }
         textarea { width: 100%; border: 2px solid #e2e8f0; border-radius: 10px; padding: 12px; box-sizing: border-box; font-size: 16px; margin-top: 10px; }
         .btn { background: var(--primary); color: white; width: 100%; padding: 12px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; }
@@ -24,6 +25,7 @@
 </head>
 <body>
 <div id="game-container">
+    <button id="exit-btn" class="btn-exit hidden" onclick="socket.emit('forceQuit')">结束游戏/关闭房间</button>
     <h1>🐴 驴桥 Donkey Bridge</h1>
     
     <div id="setup">
@@ -95,7 +97,11 @@
     socket.on('roomClosed', m => { alert(m); location.reload(); });
 
     function start() { socket.emit('startGame', { n: document.getElementById('n').value, p: document.getElementById('p').value }); }
-    socket.on('gameStarted', () => { document.getElementById('setup').classList.add('hidden'); document.getElementById('play').classList.remove('hidden'); });
+    socket.on('gameStarted', () => { 
+    document.getElementById('setup').classList.add('hidden'); 
+    document.getElementById('play').classList.remove('hidden'); 
+    document.getElementById('exit-btn').classList.remove('hidden'); // 就是这一句！让红按钮露出来
+});
     socket.on('receiveHand', d => hand = d.hand);
 
     socket.on('nextTurn', d => {

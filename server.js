@@ -85,19 +85,22 @@ io.on('connection', (socket) => {
             delete rooms[socket.roomID];
         }
     });
-
+// 强制关闭房间逻辑
+socket.on('forceQuit', () => {
+    if (rooms[socket.roomID]) {
+        io.to(socket.roomID).emit('roomClosed', `${socket.userName} 结束了游戏`);
+        delete rooms[socket.roomID];
+    }
+});
     socket.on('disconnect', () => {
-        if (rooms[socket.roomID]) {
-            io.to(socket.roomID).emit('roomClosed', `${socket.userName} 掉线，游戏结束`);
-            delete rooms[socket.roomID];
-        }
     });
 
     function syncTurn(id) {
         const r = rooms[id];
+        if(!r) return; // 关键：加上这一句保护，防止房间不存在时报错
         const active = r.players[r.curPlayerIdx];
         if(active) io.to(id).emit('nextTurn', { activeID: active.id, activeName: active.name });
     }
-});
+}); // 确保这里有这个闭合的大括号
 
 server.listen(process.env.PORT || 3000);
