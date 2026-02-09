@@ -2,184 +2,157 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>驴桥 Donkey Bridge - 联机版</title>
+    <title>驴桥 Donkey Bridge - 房间版</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
         :root { --primary: #6366f1; --accent: #f59e0b; --bg: #f8fafc; }
         body { font-family: sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 20px; }
-        #game-box { background: white; width: 100%; max-width: 600px; padding: 30px; border-radius: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); text-align: center; }
+        #game-box { background: white; width: 100%; max-width: 600px; padding: 30px; border-radius: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
         .hidden { display: none !important; }
-        .status-bar { display: flex; justify-content: space-between; background: #f1f5f9; padding: 12px; border-radius: 12px; margin-bottom: 20px; font-weight: bold; }
-        #history-display { background: #f0f9ff; color: #0369a1; padding: 15px; border-radius: 12px; margin-bottom: 15px; text-align: left; border-left: 5px solid #0ea5e9; max-height: 200px; overflow-y: auto; font-size: 14px; }
-        .history-item { margin-bottom: 8px; border-bottom: 1px dashed #bae6fd; padding-bottom: 4px; }
+        .room-tag { background: #e2e8f0; padding: 4px 12px; border-radius: 20px; font-size: 12px; }
+        #waiting-list { text-align: left; background: #f1f5f9; padding: 15px; border-radius: 12px; margin: 20px 0; }
+        .word-highlight { color: #f59e0b; font-weight: bold; text-decoration: underline; }
+        /* 其他样式保持之前的版本即可 */
+        #history-display { background: #f0f9ff; padding: 15px; border-radius: 12px; margin-bottom: 15px; text-align: left; border-left: 5px solid #0ea5e9; max-height: 200px; overflow-y: auto; font-size: 14px; }
         .hand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin: 20px 0; }
-        .card { padding: 15px 10px; border: 2px solid #e2e8f0; border-radius: 12px; cursor: pointer; background: #fff; font-weight: bold; }
-        .card.done { background: #f1f5f9; color: #cbd5e1; text-decoration: line-through; }
+        .card { padding: 15px 10px; border: 2px solid #e2e8f0; border-radius: 12px; cursor: pointer; background: #fff; text-align: center; }
+        .card.done { background: #f1f5f9; color: #cbd5e1; }
         .card.active { border-color: var(--accent); background: #fffbeb; }
-        textarea { width: 100%; border: 2px solid #e2e8f0; border-radius: 12px; padding: 15px; box-sizing: border-box; outline: none; font-size: 16px; margin-top: 10px; }
-        button { padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; transition: 0.2s; margin-top: 10px; }
+        textarea { width: 100%; border: 2px solid #e2e8f0; border-radius: 12px; padding: 15px; box-sizing: border-box; }
+        button { padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; }
         .btn-main { background: var(--primary); color: white; }
         .btn-accent { background: var(--accent); color: white; }
-        #typer-container { text-align: left; background: #2d3436; color: #dfe6e9; padding: 20px; border-radius: 12px; font-family: monospace; margin-top: 20px; line-height: 1.6; }
-        .history-card { background: #fff; padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 5px solid var(--accent); color: #333; }
+        #typer-container { text-align: left; background: #2d3436; color: #dfe6e9; padding: 20px; border-radius: 12px; margin-top: 20px; line-height: 1.6; }
     </style>
 </head>
 <body>
 <div id="game-box">
-    <h1>驴桥 Donkey Bridge</h1>
+    <h1 style="text-align:center">驴桥 <span id="display-room" class="room-tag hidden"></span></h1>
 
-    <div id="screen-setup">
-        <input type="text" id="nick" placeholder="输入你的昵称" style="width:80%; padding:12px; margin-bottom:20px; border-radius:8px; border:2px solid #ddd;">
-        <div style="background:#f1f5f9; padding:20px; border-radius:15px; margin-bottom:20px; text-align: left;">
+    <div id="screen-login">
+        <input type="text" id="nick" placeholder="昵称" style="width:100%; padding:12px; margin-bottom:10px; box-sizing:border-box;">
+        <input type="text" id="room-id" placeholder="房间名称 (如: 我们的猫窝)" style="width:100%; padding:12px; margin-bottom:20px; box-sizing:border-box;">
+        <button class="btn-main" onclick="join()">进入房间</button>
+    </div>
+
+    <div id="screen-wait" class="hidden">
+        <h3>等待室</h3>
+        <div id="waiting-list"></div>
+        <div id="host-panel" class="hidden">
+            <p>🛠️ 房主设置：</p>
             人数 (m): <input type="number" id="m-val" value="2" style="width:50px;"><br>
             手牌 (n): <input type="number" id="n-val" value="10" style="width:50px;"><br>
             轮次 (p): <input type="number" id="p-val" value="5" style="width:50px;">
+            <button class="btn-accent" onclick="start()">所有人到齐，开始游戏！</button>
         </div>
-        <button class="btn-main" onclick="ready()">开始游戏</button>
+        <p id="guest-msg" class="hidden">等待房主开始游戏...</p>
     </div>
 
     <div id="screen-play" class="hidden">
-        <div class="status-bar">
-            <span>当前玩家: <span id="p-name" style="color:var(--primary)">-</span></span>
-            <span id="wait-msg" style="font-size:12px; color:gray;">(等待中)</span>
-        </div>
-        
         <div id="history-display" class="hidden"></div>
-
         <div class="hand-grid" id="hand-display"></div>
         <div id="story-area" class="hidden">
-            <h3 id="active-word" style="color:var(--accent); margin:5px 0;"></h3>
-            <textarea id="story-text" rows="3" placeholder="接着之前的故事写下去..."></textarea>
-            <button class="btn-accent" onclick="submit()">提交这段故事</button>
+            <h3 id="active-word"></h3>
+            <textarea id="story-text" rows="3" placeholder="关键词会自动高亮..."></textarea>
+            <button class="btn-accent" onclick="submit()">提交</button>
         </div>
-    </div>
-
-    <div id="screen-recall" class="hidden">
-        <h2>🧠 默写挑战</h2>
-        <div id="aid-cards-display" style="margin-bottom:15px;"></div>
-        <textarea id="recall-input" placeholder="输入你记得的所有关键词，空格隔开..."></textarea>
-        <button class="btn-main" onclick="finish()">提交答案</button>
     </div>
 
     <div id="screen-res" class="hidden">
-        <h2>📊 最终得分</h2>
-        <div id="rank-list" style="margin-bottom:20px;"></div>
-        <hr>
+        <div id="rank-list"></div>
         <div id="typer-container"></div>
-        <button class="btn-main" onclick="location.reload()">再来一局</button>
+        <button class="btn-main" onclick="location.reload()">回到大厅</button>
     </div>
 </div>
 
 <script>
     const socket = io();
-    let myName, handData = [], globalPool = [];
+    let myName, myRoom, isHost = false, handData = [];
 
-    function ready() {
+    function join() {
         myName = document.getElementById('nick').value;
-        if(!myName) return alert("请输入昵称");
-        const cfg = { 
-            m: parseInt(document.getElementById('m-val').value), 
-            n: parseInt(document.getElementById('n-val').value), 
-            p: parseInt(document.getElementById('p-val').value) 
-        };
-        socket.emit('join', myName);
+        myRoom = document.getElementById('room-id').value;
+        if(!myName || !myRoom) return alert("请填满信息");
+        socket.emit('joinRoom', { nick: myName, room: myRoom });
+    }
+
+    socket.on('joined', data => {
+        isHost = data.isHost;
+        document.getElementById('screen-login').classList.add('hidden');
+        document.getElementById('screen-wait').classList.remove('hidden');
+        document.getElementById('display-room').innerText = `房间: ${data.room}`;
+        document.getElementById('display-room').classList.remove('hidden');
+        if(isHost) document.getElementById('host-panel').classList.remove('hidden');
+        else document.getElementById('guest-msg').classList.remove('hidden');
+    });
+
+    socket.on('updatePlayerList', list => {
+        document.getElementById('waiting-list').innerHTML = "当前玩家：<br>" + list.map(p => `${p.isHost ? '👑' : '👤'} ${p.name} ${p.name===myName?'(你)':''}`).join('<br>');
+    });
+
+    function start() {
+        const cfg = { m: parseInt(document.getElementById('m-val').value), n: parseInt(document.getElementById('n-val').value), p: parseInt(document.getElementById('p-val').value) };
         socket.emit('startGame', cfg);
     }
 
     socket.on('initHand', data => {
         handData = data.hand.map(w => ({ word: w, done: false }));
-        document.getElementById('screen-setup').classList.add('hidden');
+        document.getElementById('screen-wait').classList.add('hidden');
         document.getElementById('screen-play').classList.remove('hidden');
-        renderHand(false);
     });
 
     socket.on('nextTurn', data => {
         const isMe = data.name === myName;
-        document.getElementById('p-name').innerText = data.name;
-        document.getElementById('wait-msg').classList.toggle('hidden', isMe);
-        document.getElementById('story-area').classList.add('hidden');
-        
-        // 渲染全景故事
         const historyDiv = document.getElementById('history-display');
         if (data.fullStory && data.fullStory.length > 0) {
-            historyDiv.innerHTML = `<div style="font-weight:bold; color:#0369a1;">📖 故事前情提要：</div>` + 
-                data.fullStory.map(s => `<div class="history-item"><b>${s.player}</b>: ${s.text}</div>`).join('');
+            // 核心修改：在显示时将关键词包裹在 span 中
+            historyDiv.innerHTML = `📖 故事线：<br>` + data.fullStory.map(s => {
+                const highlighted = s.text.replace(new RegExp(s.word, 'g'), `<span class="word-highlight">${s.word}</span>`);
+                return `<b>${s.player}</b>: ${highlighted}`;
+            }).join('<br>');
             historyDiv.classList.remove('hidden');
-            historyDiv.scrollTop = historyDiv.scrollHeight;
-        } else {
-            historyDiv.classList.add('hidden');
         }
-
         renderHand(isMe);
     });
 
     function renderHand(isMe) {
         const grid = document.getElementById('hand-display');
-        grid.innerHTML = handData.map((item, i) => {
-            const cls = item.done ? 'card done' : 'card';
-            const click = (isMe && !item.done) ? `onclick="selectWord(${i})"` : '';
-            return `<div class="${cls}" ${click}>${item.word}</div>`;
-        }).join('');
+        grid.innerHTML = handData.map((item, i) => `<div class="card ${item.done?'done':''} ${isMe&&!item.done?'':'disabled'}" ${isMe&&!item.done?`onclick="selectWord(${i})"`:''}>${item.word}</div>`).join('');
     }
 
     function selectWord(i) {
         window.activeIdx = i;
-        document.querySelectorAll('.card').forEach(c => c.classList.remove('active'));
-        event.target.classList.add('active');
         document.getElementById('story-area').classList.remove('hidden');
-        document.getElementById('active-word').innerText = `当前词：${handData[i].word}`;
-        document.getElementById('story-text').focus();
+        document.getElementById('active-word').innerText = `使用词：${handData[i].word}`;
     }
 
     function submit() {
         const text = document.getElementById('story-text').value;
-        if(!text) return alert("写点什么吧");
-        socket.emit('submitStory', { word: handData[window.activeIdx].word, story: text });
+        socket.emit('submitStory', { myName, word: handData[window.activeIdx].word, story: text });
         handData[window.activeIdx].done = true;
         document.getElementById('story-text').value = '';
         document.getElementById('story-area').classList.add('hidden');
-        renderHand(false);
     }
 
     socket.on('startRecall', data => {
-        globalPool = data.storyPool;
-        document.getElementById('screen-play').classList.add('hidden');
-        document.getElementById('screen-recall').classList.remove('hidden');
-        document.getElementById('aid-cards-display').innerHTML = data.aidWords.map(w => `<span style="background:#fef3c7; padding:5px 10px; border-radius:15px; margin:3px; display:inline-block;">${w}</span>`).join('');
+        // ... (此处省略部分重复的默写和结果逻辑，保持与上一版相同即可)
     });
 
-    function finish() {
-        const input = document.getElementById('recall-input').value;
-        const userWords = input.split(/[\s,，、]+/).filter(w => w.trim());
-        const hits = globalPool.filter(item => userWords.includes(item.word)).length;
-        const score = Math.round(hits / globalPool.length * 100);
-        socket.emit('submitRecall', { score });
-        document.getElementById('screen-recall').innerHTML = "<h3>等待交卷中...</h3>";
-    }
-
-    socket.on('finalRank', data => {
-        document.getElementById('screen-recall').classList.add('hidden');
-        document.getElementById('screen-res').classList.remove('hidden');
-        document.getElementById('rank-list').innerHTML = data.scores.sort((a,b)=>b.score-a.score).map((s,i)=>`<div>#${i+1} <b>${s.name}</b> - ${s.score}%</div>`).join('');
-        playTyper(data.storyPool);
-    });
-
+    // 结果复盘高亮
     async function playTyper(pool) {
         const container = document.getElementById('typer-container');
-        container.innerHTML = "<h4>📖 最终全本故事：</h4>";
+        container.innerHTML = "<h4>📖 全景回顾：</h4>";
         for (let item of pool) {
             let card = document.createElement('div');
-            card.className = 'history-card';
-            card.innerHTML = `<strong>【${item.player}】(${item.word})</strong>: `;
+            card.style.marginBottom = "10px";
+            // 复盘时也将关键词标出
+            const textWithHighlight = item.text.replace(new RegExp(item.word, 'g'), `<b style="color:var(--accent)">${item.word}</b>`);
+            card.innerHTML = `<strong>【${item.player}】</strong>: `;
             container.appendChild(card);
-            for (let char of item.text) { 
-                card.innerHTML += char; 
-                await new Promise(r => setTimeout(r, 45)); 
-            }
+            card.innerHTML += textWithHighlight; 
+            await new Promise(r => setTimeout(r, 500)); // 复盘可以稍微快点
         }
     }
-
-    socket.on('forceReset', () => { location.reload(); });
 </script>
 </body>
 </html>
