@@ -10,17 +10,21 @@
         body { font-family: sans-serif; background: var(--bg); margin: 0; display: flex; justify-content: center; padding: 20px; }
         #game-container { background: white; width: 100%; max-width: 600px; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; }
         .hidden { display: none !important; }
-        #wall { background: #f1f5f9; padding: 15px; border-radius: 12px; height: 300px; overflow-y: auto; text-align: left; margin-bottom: 20px; border: 1px solid #e2e8f0; }
+        #wall { background: #f1f5f9; padding: 15px; border-radius: 12px; height: 280px; overflow-y: auto; text-align: left; margin-bottom: 20px; border: 1px solid #e2e8f0; }
         .item { padding: 10px; background: white; border-radius: 8px; margin-bottom: 8px; border-left: 5px solid var(--primary); font-size: 14px; position: relative; }
         .badge { background: var(--accent); color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 5px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; margin: 15px 0; }
+        
+        /* 关键词网格样式 */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; margin: 15px 0; background: #f8fafc; padding: 10px; border-radius: 12px; }
+        .card { padding: 8px 2px; border: 2px solid #e2e8f0; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: bold; background: #fff; text-align: center; transition: 0.2s; }
+        .card.active { border-color: var(--primary); background: #eef2ff; transform: scale(1.05); }
+        .card.used { background: #e2e8f0; color: #94a3b8; cursor: not-allowed; border-color: transparent; text-decoration: line-through; }
+        
         .btn-exit { background: #ef4444; color: white; padding: 5px 10px; border-radius: 8px; font-size: 12px; position: absolute; top: 20px; right: 20px; border: none; cursor: pointer; z-index: 100; }
-        .card { padding: 12px 5px; border: 2px solid #e2e8f0; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: bold; background: #fff; text-align: center; }
         textarea { width: 100%; border: 2px solid #e2e8f0; border-radius: 10px; padding: 12px; box-sizing: border-box; font-size: 16px; margin-top: 10px; }
         .btn { background: var(--primary); color: white; width: 100%; padding: 12px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; }
-        .hint-badge { background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 20px; font-size: 14px; font-weight: bold; display: inline-block; margin: 5px; border: 1px solid #fde68a; }
-        .rank-item { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #eee; }
-        #typer { text-align: left; background: #1e293b; color: #f1f5f9; padding: 15px; border-radius: 10px; margin-top: 15px; font-size: 14px; line-height: 1.6; }
+        #review-msg { color: #ef4444; font-weight: bold; font-size: 18px; margin: 10px 0; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
     </style>
 </head>
 <body>
@@ -31,146 +35,154 @@
     <div id="setup">
         <input type="text" id="name" placeholder="你的昵称" style="padding:10px; width:40%;">
         <input type="text" id="room" placeholder="房间号" style="padding:10px; width:40%;">
-        <div id="opt" class="hidden" style="margin: 15px 0; background: #f1f5f9; padding: 15px; border-radius: 12px;">
-            每个人发几张牌 (n): <input type="number" id="n" value="10" style="width:50px;"> <br><br>
-            每个人编几次故事 (p): <input type="number" id="p" value="5" style="width:50px;">
-            <p style="font-size: 11px; color: #ef4444;">* 确保 n ≥ p，否则牌不够出</p>
+        <div id="opt" class="hidden">
+            手牌(n): <input type="number" id="n" value="10" style="width:40px;"> 
+            轮数(p): <input type="number" id="p" value="5" style="width:40px;">
         </div>
-        <p id="plist">等待队友加入...</p>
+        <p id="plist">等待队友...</p>
         <button id="jbtn" class="btn" onclick="join()">加入游戏</button>
-        <button id="sbtn" class="btn hidden" onclick="start()" style="margin-top:10px; background:var(--accent);">所有人到齐，开始！</button>
+        <button id="sbtn" class="btn hidden" onclick="start()" style="margin-top:10px; background:var(--accent);">开始游戏</button>
     </div>
 
     <div id="play" class="hidden">
+        <p style="font-size: 12px; color: #64748b; margin: 0;">你的关键词库：</p>
+        <div id="hdisp" class="grid"></div>
+
         <div id="wall"></div>
-        <div id="turn">
-            <div id="hsel" class="hidden">
-                <p style="font-weight: bold;">轮到你了！选个词编故事：</p>
-                <div id="hdisp" class="grid"></div>
-            </div>
+        
+        <div id="timer-zone" class="hidden">
+            <p id="review-msg">⏱️ 全员复习时间！倒计时：<span id="seconds">10</span>s</p>
+        </div>
+
+        <div id="turn-zone">
             <div id="iarea" class="hidden">
-                <h3 id="curw" style="color:var(--accent)"></h3>
+                <h3 id="curw" style="color:var(--accent); margin:5px 0;">请先从上方选一个词</h3>
                 <textarea id="itxt" placeholder="编一段有趣的故事片段..."></textarea>
                 <button class="btn" onclick="sub()" style="margin-top:10px; background:var(--accent);">发 送</button>
             </div>
-            <div id="wmsg">等待 <span id="pname" style="color:var(--primary); font-weight: bold;"></span> 创作故事...</div>
+            <div id="wmsg">等待 <span id="pname" style="color:var(--primary); font-weight: bold;"></span> 创作...</div>
         </div>
     </div>
 
     <div id="recall" class="hidden">
-        <h3>🧠 记忆整合阶段</h3>
-        <p>分配给你的提示词如下（共 <span id="hint-count"></span> 个）：</p>
-        <div id="hint-cards" style="margin-bottom: 15px;"></div>
-        <p style="font-size: 13px; color: #666; background: #fffbeb; padding: 10px; border-radius: 8px;">
-            💡 <b>互助技巧：</b>你可以念出这些词，帮队友想起对应的故事；同样，你也要听队友念出的词来完善你的默写！
-        </p>
-        <textarea id="rans" rows="5" placeholder="输入所有关键词，空格隔开..."></textarea>
-        <button class="btn" onclick="sendScore()" style="margin-top:15px">我记全了，提交成绩</button>
+        <h3>🧠 记忆整合</h3>
+        <div id="hint-cards" style="margin-bottom: 10px;"></div>
+        <textarea id="rans" rows="5" placeholder="空格或逗号隔开所有关键词..."></textarea>
+        <button class="btn" onclick="sendScore()" style="margin-top:15px">提交</button>
     </div>
 
     <div id="result" class="hidden">
-        <h3>🏆 记忆力排行榜</h3>
-        <div id="leaderboard" style="margin-bottom: 20px; background: #f8fafc; border-radius: 12px;"></div>
-        <h3>📖 故事全本回顾</h3>
-        <div id="typer"></div>
+        <h3>🏆 记忆排行</h3>
+        <div id="leaderboard"></div>
+        <div id="typer" style="text-align:left; background:#1e293b; color:#fff; padding:15px; border-radius:10px; margin-top:10px; font-size:14px;"></div>
         <button class="btn" onclick="location.reload()" style="margin-top:20px; background:#475569;">回首页</button>
     </div>
 </div>
 
 <script>
     const socket = io({ transports: ['websocket'] });
-    let hand = [], cw = "", ci = -1, stories = [];
+    let myHand = [], usedWords = [], currentWord = "", isMyTurn = false;
 
     function join() {
-    const n = document.getElementById('name').value;
-    const r = document.getElementById('room').value;
-    if(n && r) {
-        socket.emit('joinRoom', { name: n, room: r });
-        // 按钮消失的关键代码
-        document.getElementById('jbtn').classList.add('hidden');
+        const n = document.getElementById('name').value, r = document.getElementById('room').value;
+        if(n && r) { socket.emit('joinRoom', { name: n, room: r }); document.getElementById('jbtn').classList.add('hidden'); }
     }
-}
-
     socket.on('initInfo', d => { if(d.isOwner) { document.getElementById('opt').classList.remove('hidden'); document.getElementById('sbtn').classList.remove('hidden'); } });
-    socket.on('updatePlayers', l => { document.getElementById('plist').innerHTML = "<b>当前房间：</b>" + l.map(p => p.name).join(', '); });
-    socket.on('errorMsg', m => alert(m));
+    socket.on('updatePlayers', l => document.getElementById('plist').innerText = "当前房间：" + l.map(p=>p.name).join(', '));
     socket.on('roomClosed', m => { alert(m); location.reload(); });
 
     function start() { socket.emit('startGame', { n: document.getElementById('n').value, p: document.getElementById('p').value }); }
-    socket.on('gameStarted', () => { 
-    document.getElementById('setup').classList.add('hidden'); 
-    document.getElementById('play').classList.remove('hidden'); 
-    document.getElementById('exit-btn').classList.remove('hidden'); // 就是这一句！让红按钮露出来
-});
-    socket.on('receiveHand', d => hand = d.hand);
+    socket.on('gameStarted', () => { document.getElementById('setup').classList.add('hidden'); document.getElementById('play').classList.remove('hidden'); document.getElementById('exit-btn').classList.remove('hidden'); });
+    
+    socket.on('receiveHand', d => { myHand = d.hand; renderHand(); });
 
     socket.on('nextTurn', d => {
-        const isMe = d.activeID === socket.id;
-        document.getElementById('wmsg').classList.toggle('hidden', isMe);
+        isMyTurn = d.activeID === socket.id;
+        document.getElementById('wmsg').classList.toggle('hidden', isMyTurn);
         document.getElementById('pname').innerText = d.activeName;
-        document.getElementById('hsel').classList.toggle('hidden', !isMe);
-        document.getElementById('iarea').classList.add('hidden');
-        if(isMe) {
-            const g = document.getElementById('hdisp'); g.innerHTML = '';
-            hand.forEach((w, i) => {
-                let v = document.createElement('div'); v.className='card'; v.innerText=w;
-                v.onclick = () => { cw=w; ci=i; document.getElementById('hsel').classList.add('hidden'); document.getElementById('iarea').classList.remove('hidden'); document.getElementById('curw').innerText=w; };
-                g.appendChild(v);
-            });
-        }
+        document.getElementById('iarea').classList.toggle('hidden', !isMyTurn);
+        renderHand();
     });
+
+    // 渲染手牌，区分状态
+    function renderHand() {
+        const g = document.getElementById('hdisp');
+        g.innerHTML = '';
+        myHand.forEach(w => {
+            const isUsed = usedWords.includes(w);
+            let v = document.createElement('div');
+            v.className = 'card' + (isUsed ? ' used' : '') + (w === currentWord ? ' active' : '');
+            v.innerText = w;
+            if(!isUsed && isMyTurn) {
+                v.onclick = () => { 
+                    currentWord = w; 
+                    document.getElementById('curw').innerText = "当前词：" + w;
+                    renderHand(); 
+                };
+            }
+            g.appendChild(v);
+        });
+    }
 
     function sub() {
         const t = document.getElementById('itxt').value;
-        if(!t.trim()) return;
-        socket.emit('submitStory', { word: cw, text: t });
-        if(ci !== -1) hand.splice(ci, 1);
+        if(!currentWord || !t.trim()) return alert("请先选词并写下故事！");
+        socket.emit('submitStory', { word: currentWord, text: t });
+        usedWords.push(currentWord);
+        currentWord = "";
         document.getElementById('itxt').value = '';
+        renderHand();
     }
 
     socket.on('syncWall', d => {
         document.getElementById('wall').innerHTML = d.storyPool.map((s, i) => `
             <div class="item">
                 <span class="badge">${s.word}</span><b>${s.player}:</b> ${s.text}
-                ${(i === d.storyPool.length-1 && s.id !== socket.id) ? `<button style="float:right; scale:0.8;" onclick="socket.emit('protest')">抗议重写</button>` : ''}
+                ${(i === d.storyPool.length-1) ? `<button style="float:right; scale:0.7;" onclick="socket.emit('protest')">抗议重写</button>` : ''}
             </div>`).join('');
         document.getElementById('wall').scrollTop = document.getElementById('wall').scrollHeight;
     });
 
     socket.on('timeRewind', d => {
-        document.getElementById('iarea').classList.remove('hidden');
-        document.getElementById('curw').innerText = d.word;
+        // 抗议后，把词从“已用”里拿出来，并自动填回文字
+        usedWords = usedWords.filter(w => w !== d.word);
+        currentWord = d.word;
+        document.getElementById('curw').innerText = "重新编写：" + d.word;
         document.getElementById('itxt').value = d.oldText;
-        cw = d.word; ci = -1;
+        renderHand();
+    });
+
+    socket.on('startReviewTimer', s => {
+        document.getElementById('turn-zone').classList.add('hidden');
+        document.getElementById('timer-zone').classList.remove('hidden');
+        let count = s;
+        const timer = setInterval(() => {
+            count--;
+            document.getElementById('seconds').innerText = count;
+            if(count <= 0) clearInterval(timer);
+        }, 1000);
     });
 
     socket.on('startRecallPhase', d => {
-        stories = d.stories;
         document.getElementById('play').classList.add('hidden');
         document.getElementById('recall').classList.remove('hidden');
-        document.getElementById('hint-count').innerText = d.myHints.length;
-        document.getElementById('hint-cards').innerHTML = d.myHints.map(h => `<span class="hint-badge">${h}</span>`).join('');
+        document.getElementById('hint-cards').innerHTML = d.myHints.map(h => `<span style="background:#fef3c7; padding:5px 10px; border-radius:15px; margin:5px; display:inline-block; font-weight:bold;">${h}</span>`).join('');
+        window.allStories = d.stories;
     });
 
     function sendScore() {
-        const words = document.getElementById('rans').value.split(/[\s,，、\n]+/).filter(w => w.trim() !== "");
-        const targets = stories.map(s => s.word);
-        let correct = [...new Set(words)].filter(w => targets.includes(w)).length;
-        let finalScore = Math.round(correct / targets.length * 100);
-        socket.emit('submitScore', finalScore);
-        document.getElementById('recall').innerHTML = "<h3>已提交成绩，等待队友中...</h3>";
+        const ans = document.getElementById('rans').value.split(/[\s,，、\n]+/).filter(x=>x);
+        const targets = window.allStories.map(s => s.word);
+        const correct = [...new Set(ans)].filter(x => targets.includes(x)).length;
+        socket.emit('submitScore', Math.round(correct / targets.length * 100));
+        document.getElementById('recall').innerHTML = "<h4>已提交，等待其他玩家...</h4>";
     }
 
     socket.on('finalResults', d => {
         document.getElementById('recall').classList.add('hidden');
         document.getElementById('result').classList.remove('hidden');
-        document.getElementById('leaderboard').innerHTML = d.leaderboard.map((u, i) => `
-            <div class="rank-item">
-                <span><b>${i+1}. ${u.name}</b></span>
-                <span style="color:var(--primary); font-weight:bold;">${u.score}%</span>
-            </div>`).join('');
-        const ty = document.getElementById('typer');
-        d.stories.forEach(s => { let l = document.createElement('div'); l.innerHTML = `<b>[${s.word}]</b> ${s.text}`; ty.appendChild(l); });
+        document.getElementById('leaderboard').innerHTML = d.leaderboard.map((u, i) => `<div style="padding:10px; border-bottom:1px solid #eee;"><b>${i+1}. ${u.name}</b>: ${u.score}%</div>`).join('');
+        d.stories.forEach(s => { let l = document.createElement('div'); l.innerHTML = `<b>[${s.word}]</b> ${s.text}`; document.getElementById('typer').appendChild(l); });
     });
 </script>
 </body>
