@@ -82,7 +82,31 @@
 <script>
     const socket = io({ transports: ['websocket'] });
     let myHand = [], usedWords = [], currentWord = "", isMyTurn = false;
+// 监听报错信息
+    socket.on('errorMsg', m => alert(m));
 
+    // 监听重连数据恢复
+    socket.on('reconnectData', d => {
+        document.getElementById('setup').classList.add('hidden');
+        document.getElementById('play').classList.remove('hidden');
+        document.getElementById('exit-btn').classList.remove('hidden');
+        
+        if(d.isOwner) {
+            document.getElementById('opt').classList.remove('hidden');
+            document.getElementById('sbtn').classList.remove('hidden');
+        }
+
+        myHand = d.hand;
+        // 自动计算哪些词已经用过了
+        const myName = document.getElementById('name').value;
+        usedWords = d.storyPool.filter(s => s.player === myName).map(s => s.word);
+        
+        renderHand();
+        renderWall(d.storyPool); // 调用新封装的渲染函数
+        
+        const isMy = d.activePlayer.id === socket.id || d.activePlayer.name === myName;
+        updateTurnUI(isMy, d.activePlayer.name);
+    });
     function join() {
         const n = document.getElementById('name').value, r = document.getElementById('room').value;
         if(n && r) { socket.emit('joinRoom', { name: n, room: r }); document.getElementById('jbtn').classList.add('hidden'); }
@@ -96,13 +120,7 @@
     
     socket.on('receiveHand', d => { myHand = d.hand; renderHand(); });
 
-    socket.on('nextTurn', d => {
-        isMyTurn = d.activeID === socket.id;
-        document.getElementById('wmsg').classList.toggle('hidden', isMyTurn);
-        document.getElementById('pname').innerText = d.activeName;
-        document.getElementById('iarea').classList.toggle('hidden', !isMyTurn);
-        renderHand();
-    });
+    socket.on('nextTurn', d => updateTurnUI(d.activeID === socket.id, d.activeName));
 
     // 渲染手牌，区分状态
     function renderHand() {
@@ -134,14 +152,15 @@
         renderHand();
     }
 
-    socket.on('syncWall', d => {
-        document.getElementById('wall').innerHTML = d.storyPool.map((s, i) => `
-            <div class="item">
-                <span class="badge">${s.word}</span><b>${s.player}:</b> ${s.text}
-                ${(i === d.storyPool.length-1) ? `<button style="float:right; scale:0.7;" onclick="socket.emit('protest')">抗议重写</button>` : ''}
-            </div>`).join('');
-        document.getElementById('wall').scrollTop = document.getElementById('wall').scrollHeight;
-    });
+    function updateTurnUI(isMy, name) {
+        isMyTurn = isMy;
+        document.getElementById('wmsg').classList.toggle('hidden', isMy);
+        document.getElementById('pname').innerText = name;
+        document.getElementById('iarea').classList.toggle('hidden', !isMy);
+        renderHand(); 
+    }
+
+    socket.on('syncWall', d => renderWall(d.storyPool));
 
     socket.on('timeRewind', d => {
         // 抗议后，把词从“已用”里拿出来，并自动填回文字
@@ -178,6 +197,17 @@
         document.getElementById('recall').innerHTML = "<h4>已提交，等待其他玩家...</h4>";
     }
 
+    function renderWall(pool) {
+        const wall = document.getElementById('wall');
+        if (!wall) return; // 安全检查，防止找不到元素报错
+        wall.innerHTML = pool.map((s, i) => `
+            <div class="item">
+                <span class="badge">${s.word}</span><b>${s.player}:</b> ${s.text}
+                ${(i === pool.length - 1) ? `<button style="float:right; scale:0.7;" onclick="socket.emit('protest')">抗议重写</button>` : ''}
+            </div>`).join('');
+        wall.scrollTop = wall.scrollHeight;
+    }
+    
     socket.on('finalResults', d => {
         document.getElementById('recall').classList.add('hidden');
         document.getElementById('result').classList.remove('hidden');

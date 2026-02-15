@@ -12,20 +12,49 @@ const LIB = ["宇航员", "灭火器", "仙人掌", "留声机", "降落伞", "�
 let rooms = {};
 
 io.on('connection', (socket) => {
-    socket.on('joinRoom', (data) => {
+  socket.on('joinRoom', (data) => {
         const room = data.room?.trim();
         const name = data.name?.trim();
         if (!room || !name) return;
-        socket.join(room);
-        socket.roomID = room;
-        socket.userName = name;
+
         if (!rooms[room]) {
             rooms[room] = { players: [], storyPool: [], curRound: 0, curPlayerIdx: 0, settings: { n: 10, p: 5 }, gameStarted: false, results: [] };
         }
         const r = rooms[room];
-        if (r.gameStarted) return socket.emit('errorMsg', '游戏已开始');
+
+        // --- 核心：掉线重连判定 ---
+        if (r.gameStarted) {
+            const existingPlayer = r.players.find(p => p.name === name);
+            if (!existingPlayer) {
+                return socket.emit('errorMsg', '该房间的游戏已经开始，请耐心等待下一轮喵~');
+            } else if (!existingPlayer.offline) {
+                return socket.emit('errorMsg', '您没有掉线喵，继续游戏吧~');
+            } else {
+                // 执行重连
+                socket.join(room);
+                socket.roomID = room;
+                socket.userName = name;
+                existingPlayer.id = socket.id; // 关联新 ID
+                existingPlayer.offline = false;
+                
+                // 把当前游戏“现场”发给重连的用户
+                socket.emit('reconnectData', {
+                    isOwner: existingPlayer.isOwner,
+                    hand: existingPlayer.hand,
+                    storyPool: r.storyPool,
+                    activePlayer: r.players[r.curPlayerIdx]
+                });
+                io.to(room).emit('updatePlayers', r.players);
+                return;
+            }
+        }
+
+        // 普通加入逻辑
+        socket.join(room);
+        socket.roomID = room;
+        socket.userName = name;
         const isOwner = r.players.length === 0;
-        r.players.push({ id: socket.id, name, isOwner });
+        r.players.push({ id: socket.id, name, isOwner, offline: false, hand: [] });
         socket.emit('initInfo', { isOwner });
         io.to(room).emit('updatePlayers', r.players);
     });
@@ -36,7 +65,11 @@ io.on('connection', (socket) => {
         r.gameStarted = true;
         r.settings = config;
         let deck = [...LIB].sort(() => Math.random() - 0.5);
-        r.players.forEach(p => io.to(p.id).emit('receiveHand', { hand: deck.splice(0, parseInt(config.n)) }));
+        r.players.forEach(p => {
+            p.hand = deck.splice(0, parseInt(config.n)); // 关键：存入手牌
+            p.offline = false;
+            io.to(p.id).emit('receiveHand', { hand: p.hand });
+        });
         io.to(socket.roomID).emit('gameStarted');
         syncTurn(socket.roomID);
     });
@@ -101,6 +134,16 @@ io.on('connection', (socket) => {
         if (rooms[socket.roomID]) {
             io.to(socket.roomID).emit('roomClosed', `${socket.userName} 结束了游戏`);
             delete rooms[socket.roomID];
+        }
+    });
+    socket.on('disconnect', () => {
+        const r = rooms[socket.roomID];
+        if (r) {
+            const p = r.players.find(player => player.id === socket.id);
+            if (p) {
+                p.offline = true; // 标记离线
+                io.to(socket.roomID).emit('updatePlayers', r.players); // 更新列表显示离线状态
+            }
         }
     });
 
