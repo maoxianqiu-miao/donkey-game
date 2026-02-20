@@ -9,6 +9,14 @@ app.use(express.static('public'));
 
 const LIB = require('./words.json');
 
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
 let rooms = {};
 
 io.on('connection', (socket) => {
@@ -17,55 +25,52 @@ io.on('connection', (socket) => {
         const name = data.name?.trim();
         if (!room || !name) return;
 
-        if (!rooms[room]) {
-            rooms[room] = { players: [], storyPool: [], curRound: 0, curPlayerIdx: 0, settings: { n: 10, p: 5 }, gameStarted: false, results: [] };
-        }
-        const r = rooms[room];
+        // 目标房间已存在的处理逻辑
+        let r = rooms[room];
+        if (r) {
+            const existingPlayer = r.players.find(p => p.name === name);
+            if (existingPlayer) {
+                // 同名进入：无论原玩家是否在线，都强制顶号（在同房间内）
+                const oldSocket = io.sockets.sockets.get(existingPlayer.id);
+                if (oldSocket && oldSocket.id !== socket.id) {
+                    oldSocket.emit('errorMsg', '您的账号在其他地方登录，您已被挤出房间喵~');
+                    oldSocket.disconnect();
+                }
 
-        // --- 同名强制顶号逻辑 ---
-        const existingPlayer = r.players.find(p => p.name === name);
+                socket.join(room);
+                socket.roomID = room;
+                socket.userName = name;
+                existingPlayer.id = socket.id;
+                existingPlayer.offline = false;
 
-        if (existingPlayer) {
-            // 1. 尝试寻找旧的连接并将其踢出
-            const oldSocket = io.sockets.sockets.get(existingPlayer.id);
-            if (oldSocket && oldSocket.id !== socket.id) {
-                // 给旧客户端发个信，告诉它被挤掉了（可选）
-                oldSocket.emit('errorMsg', '您的账号在其他地方登录，您已被挤出房间喵~');
-                oldSocket.disconnect(); // 强制断开旧连接
+                if (r.gameStarted) {
+                    socket.emit('reconnectData', {
+                        isOwner: existingPlayer.isOwner,
+                        hand: existingPlayer.hand,
+                        storyPool: r.storyPool,
+                        activePlayer: r.players[r.curPlayerIdx]
+                    });
+                } else {
+                    socket.emit('initInfo', { isOwner: existingPlayer.isOwner });
+                }
+
+                io.to(room).emit('updatePlayers', r.players);
+                return;
             }
 
-            // 2. 将新的 Socket 绑定到原有的玩家对象上
-            socket.join(room);
-            socket.roomID = room;
-            socket.userName = name;
-            existingPlayer.id = socket.id; // 更新 ID 为当前最新的
-            existingPlayer.offline = false; // 标记为在线
-
-            // 3. 根据游戏状态同步数据
+            // 房间正在游戏中且不是同名用户，拒绝加入
             if (r.gameStarted) {
-                // 如果游戏已经开始了，把“现场”发给重连的用户
-                socket.emit('reconnectData', {
-                    isOwner: existingPlayer.isOwner,
-                    hand: existingPlayer.hand,
-                    storyPool: r.storyPool,
-                    activePlayer: r.players[r.curPlayerIdx]
-                });
-            } else {
-                // 如果游戏还没开始，只是回到房间等待界面
-                socket.emit('initInfo', { isOwner: existingPlayer.isOwner });
+                return socket.emit('errorMsg', '该房间的游戏已经开始，请耐心等待下一轮喵~');
             }
 
-            // 通知全屋人，名单更新了（状态从离线变回在线）
-            io.to(room).emit('updatePlayers', r.players);
-            return; // 处理完毕，跳出函数
+            // 房间未开始：允许作为新玩家加入（下面的普通加入逻辑）
+        } else {
+            // 房间不存在：直接创建新房间（不要跨房间搜索同名），然后作为房主加入
+            rooms[room] = { players: [], storyPool: [], curRound: 0, curPlayerIdx: 0, settings: { n: 10, p: 5 }, gameStarted: false, results: [] };
+            r = rooms[room];
         }
 
-        // --- 以下是新玩家（从未加入过房间）的逻辑 ---
-        if (r.gameStarted) {
-            return socket.emit('errorMsg', '该房间的游戏已经开始，请耐心等待下一轮喵~');
-        }
-
-        // 普通加入逻辑
+        // 普通加入逻辑（房主或房间内新玩家）
         socket.join(room);
         socket.roomID = room;
         socket.userName = name;
@@ -80,7 +85,8 @@ io.on('connection', (socket) => {
         if(!r) return;
         r.gameStarted = true;
         r.settings = config;
-        let deck = [...LIB].sort(() => Math.random() - 0.5);
+        let deck = [...LIB];
+        shuffle(deck);
         r.players.forEach(p => {
             p.hand = deck.splice(0, parseInt(config.n)); // 关键：存入手牌
             p.offline = false;
@@ -107,7 +113,8 @@ io.on('connection', (socket) => {
             setTimeout(() => {
                 const finalR = rooms[socket.roomID];
                 if(!finalR) return;
-                let allWords = finalR.storyPool.map(s => s.word).sort(() => Math.random() - 0.5);
+                let allWords = finalR.storyPool.map(s => s.word);
+                shuffle(allWords);
                 const p = parseInt(finalR.settings.p);
                 finalR.players.forEach((player, index) => {
                     const hints = allWords.slice(index * p, (index + 1) * p);
