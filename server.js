@@ -22,31 +22,47 @@ io.on('connection', (socket) => {
         }
         const r = rooms[room];
 
-        // --- 核心：掉线重连判定 ---
-        if (r.gameStarted) {
-            const existingPlayer = r.players.find(p => p.name === name);
-            if (!existingPlayer) {
-                return socket.emit('errorMsg', '该房间的游戏已经开始，请耐心等待下一轮喵~');
-            } else if (!existingPlayer.offline) {
-                return socket.emit('errorMsg', '您没有掉线喵，继续游戏吧~');
-            } else {
-                // 执行重连
-                socket.join(room);
-                socket.roomID = room;
-                socket.userName = name;
-                existingPlayer.id = socket.id; // 关联新 ID
-                existingPlayer.offline = false;
-                
-                // 把当前游戏“现场”发给重连的用户
+        // --- 同名强制顶号逻辑 ---
+        const existingPlayer = r.players.find(p => p.name === name);
+
+        if (existingPlayer) {
+            // 1. 尝试寻找旧的连接并将其踢出
+            const oldSocket = io.sockets.sockets.get(existingPlayer.id);
+            if (oldSocket && oldSocket.id !== socket.id) {
+                // 给旧客户端发个信，告诉它被挤掉了（可选）
+                oldSocket.emit('errorMsg', '您的账号在其他地方登录，您已被挤出房间喵~');
+                oldSocket.disconnect(); // 强制断开旧连接
+            }
+
+            // 2. 将新的 Socket 绑定到原有的玩家对象上
+            socket.join(room);
+            socket.roomID = room;
+            socket.userName = name;
+            existingPlayer.id = socket.id; // 更新 ID 为当前最新的
+            existingPlayer.offline = false; // 标记为在线
+
+            // 3. 根据游戏状态同步数据
+            if (r.gameStarted) {
+                // 如果游戏已经开始了，把“现场”发给重连的用户
                 socket.emit('reconnectData', {
                     isOwner: existingPlayer.isOwner,
                     hand: existingPlayer.hand,
                     storyPool: r.storyPool,
                     activePlayer: r.players[r.curPlayerIdx]
                 });
-                io.to(room).emit('updatePlayers', r.players);
-                return;
+            } else {
+                // 如果游戏还没开始，只是回到房间等待界面
+                socket.emit('initInfo', { isOwner: existingPlayer.isOwner });
             }
+
+            // 通知全屋人，名单更新了（状态从离线变回在线）
+            io.to(room).emit('updatePlayers', r.players);
+            return; // 处理完毕，跳出函数
+        }
+
+        // --- 以下是新玩家（从未加入过房间）的逻辑 ---
+        if (r.gameStarted) {
+            return socket.emit('errorMsg', '该房间的游戏已经开始，请耐心等待下一轮喵~');
         }
 
         // 普通加入逻辑
